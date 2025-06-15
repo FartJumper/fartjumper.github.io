@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>FART TRUMP GAME 🚀</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.1/p5.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.1/addons/p5.sound.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+    html, body { 
+        margin: 0; padding: 0; overflow: hidden; 
+        background: #000; font-family: 'Fredoka One', cursive;
+    }
+    canvas { display: block; }
+    #pumpLink {
+        position: absolute; top: 20px; left: 20px;
+        width: 60px; height: 60px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex; justify-content: center; align-items: center;
+        transition: transform 0.2s ease;
+    }
+    #pumpLink:hover { transform: scale(1.1); }
+    #pumpLink img { width: 40px; height: 40px; }
+    #copyWidget {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 12px;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    #copyWidget img { width: 24px; height: 24px; margin-right: 10px; }
+    #copyWidget input {
+        background: transparent; border: none; color: white;
+        font-family: monospace; font-size: 16px; width: 300px;
+    }
+    #copyWidget input:focus { outline: none; }
+    #copyWidget button {
+        background: #4A90E2; border: none; color: white;
+        font-family: 'Fredoka One', cursive; padding: 8px 15px;
+        border-radius: 8px; cursor: pointer; transition: background-color 0.2s;
+    }
+    #copyWidget button:hover { background: #357ABD; }
+  </style>
+</head>
+<body>
+  
+  <a id="pumpLink" href="https://pump.fun" target="_blank" title="Visit pump.fun">
+    <img src="https://pump.fun/logo.png" alt="pump.fun logo">
+  </a>
+  <div id="copyWidget">
+    <img src="https://pump.fun/logo.png" alt="logo">
+    <input type="text" id="tokenAddress" value="soon" readonly>
+    <button onclick="copyAddress()">Copy</button>
+  </div>
+  
+  <script>
+    function copyAddress() {
+        const input = document.getElementById('tokenAddress');
+        navigator.clipboard.writeText(input.value).then(() => {
+            const button = document.querySelector('#copyWidget button');
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+        });
+    }
+
+    const EMOJI = { NORMAL_PLATFORM: '🧱', BRITTLE_PLATFORM: '🧇', BOUNCY_PLATFORM: '🤢', MOVING_PLATFORM: '☁️', GHOST_PLATFORM: '👻', PLUNGER_PLATFORM: '🪠', GOOD_POOP: '💩', BAD_POOP: '🥦', MEGA_BONUS: '🧻', CONFUSION_BEAN: '🫘', GAS_MASK: '😷', GOLDEN_PLUNGER: '⚜️', BOOST: '💨', CONFUSION_INDICATOR: '❓' };
+    let player, playerImg, fartSound;
+    let platforms = [], particles = [];
+    let gravity;
+    let score = 0, highestY = 0, cameraY = 0;
+    let gameState = 'start';
+    let keys = { a: false, d: false };
+    let screenShake = { timer: 0, intensity: 0 };
+    let gameOverMessage = '';
+    
+    let fartButton, pumpLinkElement, copyWidgetElement;
+    let menuChar = { yOffset: 0, velY: 0 };
+
+    const PLAYER_WIDTH = 120, PLAYER_HEIGHT = 60;
+    const SINGLE_BLOCK_SIZE = 50;
+    const VERTICAL_ROW_GAP = { min: 140, max: 200 };
+    const GAMEOVER_MESSAGES = ["Out of gas!", "That's a stinker!", "Flushed away!", "Gravity > Fart Power", "Too many beans...", "Flight grounded."];
+    let backgroundShout = { text: '', pos: null, timer: 0, alpha: 0, state: 'idle' };
+    const SHOUT_PHRASES = ["To infinity!", "Pooooosh!", "Was that me?", "Silent but deadly...", "Here I go!", "Smells like victory!"];
+
+    function preload() {
+        playerImg = loadImage('https://attic.sh/01y9npaga1flw6ewl71kfkhm6tyz');
+        soundFormats('mp3');
+        fartSound = loadSound('fart-83471.mp3');
+    }
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      gravity = createVector(0, 0.45);
+      textAlign(CENTER, CENTER); imageMode(CENTER); textFont('Fredoka One');
+      
+      fartButton = createButton('Fart');
+      fartButton.position(width / 2 - 100, height * 0.6);
+      fartButton.size(200, 80);
+      fartButton.style('font-family', 'Fredoka One');
+      fartButton.style('font-size', '48px');
+      fartButton.style('color', 'white');
+      fartButton.style('background-color', '#d9480f');
+      fartButton.style('border', '4px solid #f08c00');
+      fartButton.style('border-radius', '20px');
+      fartButton.style('cursor', 'pointer');
+      fartButton.mousePressed(startGame);
+
+      pumpLinkElement = select('#pumpLink');
+      copyWidgetElement = select('#copyWidget');
+      
+      resetGame();
+    }
+    
+    function startGame() {
+        if (gameState === 'start' || gameState === 'gameOver') {
+            resetGame();
+            gameState = 'playing';
+        }
+    }
+
+    function resetGame() {
+        player = new Player(); platforms = []; particles = [];
+        let currentY = height - 80;
+        createSingleCluster(width / 2, currentY, true);
+        for (let i = 0; i < 15; i++) {
+            currentY -= random(VERTICAL_ROW_GAP.min, VERTICAL_ROW_GAP.max);
+            generatePlatformRow(currentY);
+        }
+        score = 0; highestY = player.pos.y; cameraY = 0;
+        keys = { a: false, d: false };
+        if (gameState !== 'playing') { gameState = 'start'; }
+        gameOverMessage = random(GAMEOVER_MESSAGES);
+        menuChar = { yOffset: 0, velY: 0 };
+        backgroundShout.timer = 0;
+    }
+    
+    function generatePlatformRow(y) {
+        let availableZones = [0, 1, 2, 3, 4];
+        let clustersToCreate = floor(random(2, 5));
+        for (let i = 0; i < clustersToCreate; i++) {
+            let randomIndex = floor(random(availableZones.length));
+            let zone = availableZones.splice(randomIndex, 1)[0];
+            let x = (width / 5) * zone + random(-width / 10, width / 10);
+            createSingleCluster(x, y, false);
+        }
+    }
+
+    function createSingleCluster(x, y, isFirst) {
+        let type;
+        let clusterSize;
+        if (isFirst) { type = 'normal'; } 
+        else { type = random(['normal', 'normal', 'normal', 'brittle', 'brittle', 'bouncy', 'moving', 'ghost', 'plunger']); }
+        
+        if (type === 'normal' || type === 'brittle') { clusterSize = 3; } 
+        else { clusterSize = 1; }
+        
+        let bonusType = null;
+        if (!isFirst && type !== 'plunger') {
+            let rBonus = random(1);
+            if (rBonus < 0.01) bonusType = 'magnet';
+            else if (rBonus < 0.04) bonusType = 'mega';
+            else if (rBonus < 0.10) bonusType = 'gas_mask';
+            else if (rBonus < 0.18) bonusType = 'bean';
+            else if (rBonus < 0.30) bonusType = 'bad';
+            else if (rBonus < 0.45) bonusType = 'good';
+        }
+        let bonusIndex = (bonusType !== null) ? floor(random(clusterSize)) : -1;
+        for (let i = 0; i < clusterSize; i++) {
+            let blockX = x + (i - (clusterSize-1) / 2) * SINGLE_BLOCK_SIZE;
+            if(blockX < SINGLE_BLOCK_SIZE/2 || blockX > width - SINGLE_BLOCK_SIZE/2) continue;
+            platforms.push(new Platform(blockX, y, type, i === bonusIndex ? bonusType : null));
+        }
+    }
+
+    function windowResized() { 
+        resizeCanvas(windowWidth, windowHeight); 
+        fartButton.position(width / 2 - 100, height * 0.6);
+    }
+
+    function draw() {
+        if (gameState === 'start' || gameState === 'gameOver') {
+            fartButton.style('display', 'block');
+            pumpLinkElement.style('display', 'flex');
+            copyWidgetElement.style('display', 'flex');
+        } else {
+            fartButton.style('display', 'none');
+            pumpLinkElement.style('display', 'none');
+            copyWidgetElement.style('display', 'none');
+        }
+
+        if (gameState === 'start') { drawStartScreen(); return; }
+        runGameLogic();
+        if (gameState === 'paused') { drawPauseScreen(); return; }
+        if (gameState === 'gameOver') { drawGameOverScreen(); return; }
+    }
+
+    function drawStartScreen(){
+        drawTiledBackground();
+        
+        let bobbing = sin(frameCount * 0.05) * 8;
+        let charX = width / 2;
+        let charY = height / 2 - 40 + bobbing + menuChar.yOffset;
+        
+        menuChar.velY += 0.4;
+        menuChar.yOffset += menuChar.velY;
+        if (menuChar.yOffset > 0) {
+            menuChar.yOffset = 0;
+            menuChar.velY = 0;
+        }
+
+        push();
+        drawingContext.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        drawingContext.shadowBlur = 20;
+        drawingContext.shadowOffsetY = 15;
+        image(playerImg, charX, charY, PLAYER_WIDTH, PLAYER_HEIGHT);
+        pop();
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update();
+            particles[i].draw();
+            if (particles[i].isDead()) particles.splice(i, 1);
+        }
+
+        fill(255);
+        textAlign(CENTER, CENTER);
+        textSize(90);
+        drawingContext.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        drawingContext.shadowBlur = 15;
+        drawingContext.shadowOffsetY = 5;
+        text("Fart Trump", width/2, height * 0.25);
+        drawingContext.shadowColor = 'transparent';
+        
+        textSize(28);
+        text("...fart to start!", width/2, height * 0.6 + 70);
+    }
+    
+    function runGameLogic() {
+      drawTiledBackground();
+      if (screenShake.timer > 0) { translate(random(-screenShake.intensity, screenShake.intensity), random(-screenShake.intensity, screenShake.intensity)); screenShake.timer--; }
+      let targetCameraY = -player.pos.y + height / 1.8;
+      cameraY = lerp(cameraY, targetCameraY, 0.1);
+      translate(0, cameraY);
+      updateAndDrawShout();
+      drawingContext.shadowColor = 'rgba(0, 0, 0, 0.3)'; drawingContext.shadowBlur = 15; drawingContext.shadowOffsetY = 10;
+      for (let p of platforms) { if(gameState === 'playing') p.update(); p.draw(); }
+      if (gameState === 'playing') player.update();
+      drawingContext.shadowOffsetY = 15; drawingContext.shadowBlur = 20;
+      player.draw();
+      drawingContext.shadowColor = 'transparent';
+      for (let i = particles.length - 1; i >= 0; i--) { particles[i].update(); particles[i].draw(); if (particles[i].isDead()) particles.splice(i, 1); }
+      if (gameState === 'playing') {
+        player.checkEdges(); checkCollisions(); managePlatforms();
+        if (player.pos.y > -cameraY + height + PLAYER_HEIGHT) gameState = 'gameOver';
+      }
+      resetMatrix();
+      drawHUD();
+    }
+    
+    function drawTiledBackground() {
+        let tileSize = 80;
+        let cleanTileColor = color(240, 240, 230);
+        let dirtyTileColor = color(180, 170, 140);
+        let cleanGroutColor = color(200);
+        let dirtyGroutColor = color(100, 90, 80);
+        let camOffsetY = -cameraY % tileSize;
+        for (let y = -tileSize; y < height + tileSize; y += tileSize) {
+            for (let x = 0; x < width; x += tileSize) {
+                let worldY = y - camOffsetY + cameraY;
+                let progress = constrain(map(worldY, 0, -50000, 0, 1), 0, 1);
+                let tileColor = lerpColor(cleanTileColor, dirtyTileColor, progress);
+                let groutColor = lerpColor(cleanGroutColor, dirtyGroutColor, progress);
+                stroke(groutColor); strokeWeight(4); fill(tileColor); rect(x, y + camOffsetY, tileSize, tileSize);
+                push(); fill(0, 0, 0, 15); noStroke();
+                textSize(18); textAlign(CENTER, CENTER);
+                pop();
+            }
+        }
+        noStroke();
+    }
+
+    function updateAndDrawShout() {
+        if (gameState === 'playing' && frameCount % 360 === 0 && backgroundShout.timer <= 0) {
+            backgroundShout.text = random(SHOUT_PHRASES);
+            let x = random(width * 0.2, width * 0.8);
+            let y = player.pos.y + random(-height / 3, height / 3);
+            backgroundShout.pos = createVector(x, y);
+            backgroundShout.timer = 120;
+            backgroundShout.alpha = 0;
+            backgroundShout.state = 'fading-in';
+        }
+        if (backgroundShout.timer > 0) {
+            backgroundShout.timer--;
+            if (backgroundShout.state === 'fading-in') { backgroundShout.alpha = min(255, backgroundShout.alpha + 15); if (backgroundShout.alpha >= 255) { backgroundShout.state = 'visible'; } } 
+            else if (backgroundShout.timer < 30) { backgroundShout.state = 'fading-out'; backgroundShout.alpha = max(0, backgroundShout.alpha - 10); }
+            if (backgroundShout.alpha > 0) {
+                push();
+                fill(255, 255, 255, backgroundShout.alpha / 4);
+                textSize(80); textAlign(CENTER, CENTER);
+                drawingContext.shadowColor = 'rgba(0,0,0,0.5)'; drawingContext.shadowBlur = 10;
+                text(backgroundShout.text, backgroundShout.pos.x, backgroundShout.pos.y);
+                pop();
+            }
+        } else { backgroundShout.state = 'idle'; }
+    }
+    
+    function drawPauseScreen() {
+        drawScreenOverlay('PAUSED', "Press ESC to continue", undefined);
+        const legendData = { "Platforms": [{ emoji: EMOJI.NORMAL_PLATFORM, text: "Normal" }, { emoji: EMOJI.BRITTLE_PLATFORM, text: "Breaks after one jump" }, { emoji: EMOJI.BOUNCY_PLATFORM, text: "Super jump!" }, { emoji: EMOJI.MOVING_PLATFORM, text: "Moves horizontally" }, { emoji: EMOJI.GHOST_PLATFORM, text: "Disappears periodically" }, { emoji: EMOJI.PLUNGER_PLATFORM, text: "Pulls you down!" }], "Buffs": [{ emoji: EMOJI.GOOD_POOP, text: "Jump higher" }, { emoji: EMOJI.MEGA_BONUS, text: "Mega jump boost" }, { emoji: EMOJI.GAS_MASK, text: "Immune to bad poop" }, { emoji: EMOJI.GOLDEN_PLUNGER, text: "Attracts bonuses" }], "Debuffs": [ { emoji: EMOJI.BAD_POOP, text: "Weak jump" }, { emoji: EMOJI.CONFUSION_BEAN, text: "Inverts controls" } ] };
+        let startX = width/2 - 300; let startY = height/2 - 100;
+        for (const [title, items] of Object.entries(legendData)) {
+            push(); textAlign(CENTER); textSize(24); fill(255); text(title, startX, startY);
+            textAlign(LEFT, CENTER); textSize(30);
+            let yOffset = startY + 50;
+            for (const item of items) { text(item.emoji, startX - 100, yOffset); textSize(18); text(item.text, startX - 60, yOffset); textSize(30); yOffset += 45; }
+            pop(); startX += 300;
+        }
+    }
+    
+    function checkCollisions() {
+        if (player.vel.y > 0) {
+            for (let p of platforms) {
+                if (p.isActive() && player.pos.x + player.w/3 > p.pos.x - p.w/2 && player.pos.x - player.w/3 < p.pos.x + p.w/2 && player.pos.y + player.h/2 > p.pos.y - p.h/2 && player.pos.y + player.h/2 < p.pos.y + p.h/2 + 20) {
+                    if (p.type === 'plunger') { player.vel.y += 15; p.wobble = PI; createPlungerEffect(p.pos.x, p.pos.y); continue; }
+                    if (fartSound.isLoaded()) { fartSound.play(); }
+                    player.jump(p.type); p.wobble = PI; createFartParticles(player.pos.x, player.pos.y + player.h / 2);
+                    if (p.type === 'brittle') p.break();
+                    if (p.bonusType && !p.isCollected) { player.activateBonus(p.bonusType); p.isCollected = true; createPoopCollectParticles(p.pos.x, p.pos.y); }
+                }
+            }
+        }
+    }
+
+    function managePlatforms() {
+      let lowestY = Infinity;
+      platforms.forEach(p => { if(p.pos.y < lowestY) lowestY = p.pos.y; });
+      if (platforms.length < 80) { generatePlatformRow(lowestY - random(VERTICAL_ROW_GAP.min, VERTICAL_ROW_GAP.max)); }
+      platforms = platforms.filter(p => p.pos.y < -cameraY + height + 200);
+    }
+    
+    function drawHUD() {
+        if (gameState === 'playing' || gameState === 'paused') { highestY = min(highestY, player.pos.y); score = floor((-highestY + height - 100) / 10); }
+        fill(0, 0, 0, 50); noStroke(); rect(10, 10, 180, 50, 25);
+        fill(255); textSize(32); textAlign(LEFT, CENTER); text(`Score: ${score}`, 30, 37);
+        if (player.bonus.type && player.bonus.type !== 'none' && player.bonus.timer > 0) {
+            let bonusEmoji;
+            switch(player.bonus.type) { case 'good': bonusEmoji = EMOJI.GOOD_POOP; break; case 'bad': bonusEmoji = EMOJI.BAD_POOP; break; case 'mega': bonusEmoji = EMOJI.MEGA_BONUS; break; case 'bean': bonusEmoji = EMOJI.CONFUSION_BEAN; break; case 'gas_mask': bonusEmoji = EMOJI.GAS_MASK; break; case 'magnet': bonusEmoji = EMOJI.GOLDEN_PLUNGER; break; }
+            let barMaxWidth = 120; let barWidth = map(player.bonus.timer, 0, player.bonus.initialTimer, 0, barMaxWidth);
+            push(); textAlign(RIGHT, TOP);
+            fill(0, 0, 0, 50); noStroke(); rect(width - 180, 10, 170, 50, 25);
+            textSize(40); text(bonusEmoji, width - 135, 12);
+            fill(80); rect(width - 125, 35, barMaxWidth, 10, 5);
+            fill(255, 223, 0); rect(width - 125, 35, barWidth, 10, 5);
+            pop();
+        }
+    }
+    
+    function keyPressed() {
+        if (keyCode === ESCAPE) { if (gameState === 'playing') gameState = 'paused'; else if (gameState === 'paused') gameState = 'playing'; }
+        if (key === 'r' || key === 'R') { startGame(); }
+        if (key === 'a' || key === 'A') keys.a = true; if (key === 'd' || key === 'D') keys.d = true;
+    }
+
+    function keyReleased(){ if(key === 'a' || key === 'A') keys.a = false; if(key === 'd' || key === 'D') keys.d = false; }
+
+    function mousePressed() {
+        userStartAudio();
+        if (gameState === 'start') {
+            let bobbing = sin(frameCount * 0.05) * 8;
+            let charX = width / 2; let charY = height / 2 - 40 + bobbing + menuChar.yOffset;
+            let d = dist(mouseX, mouseY, charX, charY);
+            if (d < PLAYER_WIDTH / 2) {
+                if (fartSound.isLoaded()) { fartSound.play(); }
+                createFartParticles(charX, charY + PLAYER_HEIGHT / 2);
+                menuChar.velY = -8;
+            }
+        }
+        if (gameState === 'gameOver') {
+            // This is now handled by the fartButton's mousePressed event
+        }
+    }
+
+    function drawScreenOverlay(title, subtitle, finalScore) { fill(0, 0, 0, 180); rect(0, 0, width, height); fill(255); textAlign(CENTER, CENTER); textSize(80); if (title) text(title, width/2, height/2 - 250); if (finalScore !== undefined) { textSize(42); text(`Your Score: ${finalScore}`, width/2, height*0.8); } if (subtitle) { textSize(28); text(subtitle, width/2, height*0.8 + 40); } }
+    function drawGameOverScreen(){ drawScreenOverlay(gameOverMessage, "Press 'R' or FART to restart", score); }
+    function addScreenShake(intensity, duration){ screenShake = {intensity, timer: duration}; }
+    function createFartParticles(x, y){ for(let i=0; i<8; i++){ let angle = random(PI*0.25, PI*0.75), speed = random(1,3), vel = createVector(cos(angle)*speed, sin(angle)*speed), pColor = color(139, 69, 19, 100); particles.push(new Particle(x, y, pColor, vel, random(40,80))); } }
+    function createPoopCollectParticles(x, y){ for(let i=0; i<20; i++){ let angle = random(TWO_PI), speed = random(2,5), vel = createVector(cos(angle)*speed, sin(angle)*speed), pColor = color(255, 223, 0); particles.push(new Particle(x, y, pColor, vel, random(70,140))); } }
+    function createBadBonusParticles(x, y){ for(let i=0; i<20; i++){ let angle = random(TWO_PI), speed = random(1,4), vel = createVector(cos(angle)*speed, sin(angle)*speed), pColor = color(50, 150, 50, 150); particles.push(new Particle(x, y, pColor, vel, random(60,100))); } }
+    function createRainbowTrail(x, y){ let pColor = color(random(255), random(255), random(255)); particles.push(new Particle(x, y, pColor, createVector(0,0), 40)); }
+    function createPlungerEffect(x,y) { for(let i=0; i<15; i++){ let angle = random(PI, TWO_PI), speed = random(2,6), vel = createVector(cos(angle)*speed, sin(angle)*speed), pColor = color(50, 20, 20, 150); particles.push(new Particle(x, y, pColor, vel, random(30,60))); } }
+
+    class Player {
+        constructor() { this.pos = createVector(width / 2, height - 150); this.vel = createVector(0, 0); this.acc = createVector(0, 0); this.w = PLAYER_WIDTH; this.h = PLAYER_HEIGHT; this.jumpForce = -13.5; this.horizontalSpeed = 0; this.maxHorizontalSpeed = 8; this.horizontalAcceleration = 0.6; this.bonus = { type: 'none', timer: 0, initialTimer: 0 }; this.scale = createVector(1, 1); }
+        update() { let moveLeft = keys.a, moveRight = keys.d; if(this.bonus.type === 'bean') { [moveLeft, moveRight] = [moveRight, moveLeft]; } if (moveLeft) this.horizontalSpeed = max(-this.maxHorizontalSpeed, this.horizontalSpeed - this.horizontalAcceleration); if (moveRight) this.horizontalSpeed = min(this.maxHorizontalSpeed, this.horizontalSpeed + this.horizontalAcceleration); if (!moveLeft && !moveRight) this.horizontalSpeed *= 0.9; this.pos.x += this.horizontalSpeed; this.acc.add(gravity); this.vel.add(this.acc); this.pos.add(this.vel); this.acc.mult(0); let stretch = map(this.vel.y, -15, 15, .85, 1.25); this.scale.y = stretch; this.scale.x = 2 - stretch; if (this.bonus.timer > 0) this.bonus.timer--; else this.bonus.type = "none"; if (this.bonus.type === "mega") createRainbowTrail(this.pos.x, this.pos.y + this.h / 2); if (this.bonus.type === "magnet") this.attractBonuses(); }
+        draw() { push(); translate(this.pos.x, this.pos.y); rotate(this.horizontalSpeed * 0.02); scale(this.scale.x, this.scale.y); if (this.bonus.type === 'good' && this.vel.y < 0) { push(); translate(0, this.h / 2); rotate(PI / 2); textSize(60 + 10 * sin(frameCount * .5)); text(EMOJI.BOOST, 0, 0) } if (this.bonus.type === 'bean') { textSize(40); text(EMOJI.CONFUSION_INDICATOR, 0, -this.h); } image(playerImg, 0, 0, this.w, this.h); pop(); }
+        checkEdges() { if (this.pos.x > width + this.w / 2) this.pos.x = -this.w / 2; else if (this.pos.x < -this.w / 2) this.pos.x = width + this.w / 2; }
+        jump(platformType) { let force = this.jumpForce; if (platformType === 'bouncy') force *= 2.2; if (this.bonus.type === 'mega') force *= 2; if (this.bonus.type === 'good') force *= 1.7; if (this.bonus.type === 'bad' && this.bonus.type !== 'gas_mask') force *= .2; this.vel.y = force; this.scale.y = 1.5; this.scale.x = .5; pop(); }
+        activateBonus(type) { let duration = 0; if (type === 'mega') duration = 180; if (type === 'good') duration = 300; if (type === 'bad' && this.bonus.type !== 'gas_mask') duration = 60; if (type === 'bean') duration = 240; if (type === 'gas_mask') duration = 600; if (type === 'magnet') duration = 400; this.bonus = { type: type, timer: duration, initialTimer: duration }; if (type === 'mega') addScreenShake(4, 30); if (type === 'bad' && this.bonus.type !== 'gas_mask') createBadBonusParticles(this.pos.x, this.pos.y); }
+        attractBonuses() { for(let p of platforms) { if(p.bonusType && !p.isCollected) { let dir = p5.Vector.sub(this.pos, p.pos); if(dir.mag() < 200) { dir.normalize().mult(-3); p.pos.sub(dir); } } } }
+    }
+    class Platform {
+        constructor(x, y, type, bonusType) { this.pos = createVector(x, y); this.startPos = createVector(x, y); this.w = SINGLE_BLOCK_SIZE; this.h = SINGLE_BLOCK_SIZE; this.type = type; this.bonusType = bonusType; this.isCollected = false; this.isBroken = false; this.wobble = 0; this.alpha = 255; this.moveSpeed = random(0.01, 0.03); }
+        update() { if (this.type === 'moving') { this.pos.x = this.startPos.x + sin(frameCount * this.moveSpeed) * 100; } if (this.type === 'ghost') { let cycleFrame = frameCount % 120; if (cycleFrame < 60) { this.alpha = 0; } else if (cycleFrame < 80) { this.alpha = map(cycleFrame, 60, 80, 0, 255); } else { this.alpha = 255; } } }
+        isActive() { return !this.isBroken && this.alpha > 0; }
+        draw() { if (this.isBroken) return; push(); tint(255, this.alpha); let yWobble = 3 * sin(this.wobble); if (this.wobble > 0) this.wobble -= 0.1; let a; switch(this.type){ case 'normal':a=EMOJI.NORMAL_PLATFORM;break; case 'brittle':a=EMOJI.BRITTLE_PLATFORM;break; case 'bouncy':a=EMOJI.BOUNCY_PLATFORM;break; case 'moving':a=EMOJI.MOVING_PLATFORM;break; case 'ghost':a=EMOJI.GHOST_PLATFORM;break; case 'plunger':a=EMOJI.PLUNGER_PLATFORM;break; } textSize(this.w); text(a, this.pos.x, this.pos.y + yWobble); if (this.bonusType && !this.isCollected) { let bonusEmoji; switch(this.bonusType){ case 'good':bonusEmoji=EMOJI.GOOD_POOP;break; case 'bad':bonusEmoji=EMOJI.BAD_POOP;break; case 'mega':bonusEmoji=EMOJI.MEGA_BONUS;break; case 'bean':bonusEmoji=EMOJI.CONFUSION_BEAN;break; case 'gas_mask':bonusEmoji=EMOJI.GAS_MASK;break; case 'magnet':bonusEmoji=EMOJI.GOLDEN_PLUNGER;break; } textSize(.7 * this.w); text(bonusEmoji, this.pos.x, this.pos.y - .6 * this.h + yWobble) } pop(); }
+        break() { if (this.isBroken) return; this.isBroken = true; addScreenShake(2, 10); for (let t = 0; t < 15; t++) { let a = p5.Vector.random2D().mult(random(1, 4)); particles.push(new Particle(this.pos.x, this.pos.y, color(181, 137, 98), a, 80)); } }
+    }
+    class Particle {
+        constructor(x, y, clr, vel, lifespan) { this.pos = createVector(x, y); this.vel = vel; this.lifespan = lifespan; this.color = clr; this.size = random(4, 10); }
+        update() { this.pos.add(this.vel); this.lifespan -= 2; }
+        draw() { noStroke(); fill(this.color.levels[0], this.color.levels[1], this.color.levels[2], this.lifespan); ellipse(this.pos.x, this.pos.y, this.size); }
+        isDead() { return this.lifespan < 0; }
+    }
+  </script>
+</body>
+</html>
